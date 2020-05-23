@@ -19,7 +19,6 @@ import torchvision.transforms as T
 is_ipython = "inline" in matplotlib.get_backend()
 if is_ipython: from IPython import display
 
-
 # deep q-network
 # we need a policy network and a target network
 # network consists of a 2 fully connected hidden layers and an output layer
@@ -108,8 +107,8 @@ class Agent():
         self.current_step += 1
 
         if rate > random.random():  # explore
-            action = random.randrange(self.num_actions)
-            return torch.tensor([action]).to(self.device)
+            act = random.randrange(self.num_actions)
+            return torch.tensor([act]).to(self.device)
         else:  # exploit
             # passing data to policy netword without gradient tracking
             # (this model is not for training yet)
@@ -137,7 +136,7 @@ class CartpoleEnvManager():
         return self.env.render(mode)
 
     def num_actions_available(self):
-        return not self.env.action_space.n
+        return self.env.action_space.n
 
     def take_action(self, action):
         # action.item(): action that would be passed should be a tensor
@@ -167,7 +166,7 @@ class CartpoleEnvManager():
         screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
         # pass the array as a tensor
         screen = torch.from_numpy(screen)
-        resize = T.Compose([T.ToPILImage(), T.Resize((40, 90)), T.ToTensor])
+        resize = T.Compose([T.ToPILImage(), T.Resize((40, 90)), T.ToTensor()])
         return resize(screen).unsqueeze(0).to(self.device)
 
     # return the current state of env as a processed image
