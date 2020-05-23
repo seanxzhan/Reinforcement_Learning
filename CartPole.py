@@ -195,3 +195,13 @@ class CartpoleEnvManager():
     def get_screen_width(self):
         screen = self.get_processed_screen()
         return screen.shape[3]
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+envManager = CartpoleEnvManager(device)
+envManager.reset()
+screen = envManager.render("rgb_array")
+
+plt.figure()
+plt.imshow(screen)
+plt.title("Non-processed screen example")
+plt.show()
