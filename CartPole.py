@@ -196,6 +196,7 @@ class CartpoleEnvManager():
         screen = self.get_processed_screen()
         return screen.shape[3]
 
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 envManager = CartpoleEnvManager(device)
 envManager.reset()
