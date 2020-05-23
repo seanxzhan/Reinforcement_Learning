@@ -1,7 +1,7 @@
 import gym
 import math
 import random
-import numpy as py
+import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from collections import namedtuple
@@ -164,7 +164,7 @@ class CartpoleEnvManager():
 
     def transform_screen_data(self, screen):
         # store screen into an array
-        screen = py.np.ascontiguousarray(screen, dtype=py.np.float32) / 255
+        screen = np.ascontiguousarray(screen, dtype=py.np.float32) / 255
         # pass the array as a tensor
         screen = torch.from_numpy(screen)
         resize = T.Compose([T.ToPILImage(), T.Resize((40, 90)), T.ToTensor])
