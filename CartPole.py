@@ -1,10 +1,4 @@
 import gym
-# env = gym.make("CartPole-v0")
-# env.reset()
-# for _ in range(1000):
-#     env.render()
-#     env.step(env.action_space.sample())
-# env.close()
 import math
 import random
 import numpy as py
@@ -200,9 +194,51 @@ class CartpoleEnvManager():
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 envManager = CartpoleEnvManager(device)
 envManager.reset()
-screen = envManager.render("rgb_array")
 
-plt.figure()
-plt.imshow(screen)
-plt.title("Non-processed screen example")
-plt.show()
+
+def show_unprocessed_screen():
+    screen = envManager.render("rgb_array")
+    plt.figure()
+    plt.imshow(screen)
+    plt.title("Non-processed screen example")
+    plt.show()
+
+
+def show_processed_screen():
+    screen = envManager.get_processed_screen()
+    plt.figure()
+    plt.imshow(screen.squeeze(0).permute(1, 2, 0), interpolation="none")
+    plt.title("Processed screen example")
+    plt.show()
+
+
+######################## UTILITY ########################
+
+
+# period: represents the period over which we want to calculate an avg
+# values: values represent a list of values representing the number of
+#         rewards that the agent got
+def get_moving_average(period, values):
+    values = torch.tensor(values, dtype=torch.float)
+    # length of the dataset must be longer than that of the required period
+    if len(values) >= period:
+        moving_avg = values.unfold(dimension=0, size=period, step=1).mean(dim=1) \
+            .flatten(start_dim=0)
+        return moving_avg.numpy()
+    else:
+        moving_avg = torch.zeros(len(values))
+        return moving_avg.numpy()
+
+
+# plot the duration of each episode and the moving average in 100 episodes
+# note that the target reward is 195 over 100 consecutive episodes.
+def plot(values, moving_avg_period):
+    plt.figure(2)
+    plt.clf()
+    plt.title("Training in progress")
+    plt.xlabel("Episode")
+    plt.ylabel("Duration")
+    plt.plot(values)
+    plt.plot(get_moving_average(moving_avg_period, values))
+    plt.pause(0.001)
+    if is_ipython: display.clear_output(wait=True)
