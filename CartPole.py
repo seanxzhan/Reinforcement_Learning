@@ -191,28 +191,7 @@ class CartpoleEnvManager():
         return screen.shape[3]
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-envManager = CartpoleEnvManager(device)
-envManager.reset()
-
-
-def show_unprocessed_screen():
-    screen = envManager.render("rgb_array")
-    plt.figure()
-    plt.imshow(screen)
-    plt.title("Non-processed screen example")
-    plt.show()
-
-
-def show_processed_screen():
-    screen = envManager.get_processed_screen()
-    plt.figure()
-    plt.imshow(screen.squeeze(0).permute(1, 2, 0), interpolation="none")
-    plt.title("Processed screen example")
-    plt.show()
-
-
-######################## UTILITY ########################
+######################## PLOTTING ########################
 
 
 # period: represents the period over which we want to calculate an avg
@@ -239,6 +218,145 @@ def plot(values, moving_avg_period):
     plt.xlabel("Episode")
     plt.ylabel("Duration")
     plt.plot(values)
-    plt.plot(get_moving_average(moving_avg_period, values))
+
+    moving_avg = get_moving_average(moving_avg_period, values)
+    plt.plot(moving_avg)
     plt.pause(0.001)
+    print("Episode", len(values), "\n", moving_avg_period, "episode moving avg:",
+          moving_avg[-1])
     if is_ipython: display.clear_output(wait=True)
+
+
+######################## Training ########################
+
+
+batch_size = 256
+gamma = 0.999
+eps_start = 1
+eps_end = 0.01
+eps_decay = 0.001
+target_update = 10  # update the target network every 10 episodes
+memory_size = 100000
+learning_rate = 0.001
+num_episodes = 1000
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+envManager = CartpoleEnvManager(device)
+strategy = EpsilonGreedyStrategy(eps_start, eps_end, eps_decay)
+agent = Agent(strategy, envManager.num_actions_available(), device)
+memory = ReplayMemory(memory_size)
+
+# input dimension
+policy_net = DQN(envManager.get_screen_height(), envManager.get_screen_width()).to(device)
+target_net = DQN(envManager.get_screen_height(), envManager.get_screen_width()).to(device)
+# clone the policy net to target net
+target_net.load_state_dict(policy_net.state_dict())
+target_net.eval()  # indicating that the target networks is not in training mode => eval mode
+optimizer = optim.Adam(params=policy_net.parameters(), lr=learning_rate)
+
+
+# this class deals with the second pass to get the predicted q value
+class QValues():
+    # since we won't create an instance of this class, we won't be using the device
+    # that we have already created outside of this class
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # static method allows us to use the tagged functions without creating a class first
+    @staticmethod
+    def get_current(policy_net, states, actions):
+        # returns predicted q values from the policy net for the state action pair
+        return policy_net(states).gather(dim=1, index=actions.unsqueeze(-1))
+
+    # do we have any final states in our next_state tensor?
+    # if we do, we don't pass them to the target net because their associated values are 0
+    @staticmethod
+    def get_next(target_net, next_states):
+        # for each next state, we want to obtain the max q value predicted by the target net
+        # final states are represented by all pixels being 0
+        # we are filtering through all the locations to get where all pixels are 0
+        final_state_locations = next_states.flatten(start_dim=1).max(dim=1)[0]. \
+            eq(0).type(torch.bool)  # if max is 0, we know it's final state
+        # we don't want to pass these final state locations to target net
+        non_final_state_locations = (final_state_locations == False)
+        non_final_states = next_states[non_final_state_locations]
+        # how many next states are in the next_states tensor?
+        batch_size = next_states.shape[0]
+        values = torch.zeros(batch_size).to(QValues.device)
+        # set values at non_final_state_locations to be the same as
+        # maximum predicted q values from the target net across each action
+        values[non_final_state_locations] = target_net(non_final_states).max(dim=1)[0].detach()
+        # values will be such that:
+        # 0's as the q-values that are the final states, and
+        # for each non-final state, the tensor values contains the max predicted
+        # q-values across all actions for each non-final state
+        return values
+
+
+def extract_tensors(experiences):
+    # transpose the input experiences into a batch of experiences
+    # i.e. transform:
+    # [Experience(1, 1, 1, 1), Experience(2, 2, 2, 2)] into:
+    # Experience((1, 2), (1, 2), (1, 2), (1, 2))
+    batch = Experience(*zip(*experiences))
+    t1 = torch.cat(batch.state)
+    t2 = torch.cat(batch.action)
+    t3 = torch.cat(batch.reward)
+    t4 = torch.cat(batch.next_state)
+    return (t1, t2, t3, t4)
+
+
+# values in the list are the number of rewards that the agent receives
+# 1 reward per move to keep the game going => 1 reward = 1 time step of duration
+episode_durations = []  # list of values that would be used later
+for episode in range(num_episodes):
+    envManager.reset()
+    state = envManager.get_state()
+
+    for timestep in count():
+        # agent uses the policy net to explore or exploit
+        action = agent.select_action(state, policy_net)
+        reward = envManager.take_action(action)
+        next_state = envManager.get_state()
+        memory.push(Experience(state, action, next_state, reward))
+        state = next_state
+
+        # training
+        if memory.can_return_sample(batch_size):
+            experiences = memory.sample(batch_size)
+            states, actions, rewards, next_states = extract_tensors(experiences)
+
+            current_q_values = QValues.get_current(policy_net, states, actions)
+            next_q_values = QValues.get_next(target_net, next_states)
+            target_q_values = (next_q_values * gamma) + rewards
+
+            loss = F.mse_loss(current_q_values, target_q_values.unsqueeze(1))
+            optimizer.zero_grad()  # set the gradients of the weights and biases to 0
+            loss.backward()  # back propogation after zero_grad to avoid accumulation of grad
+            optimizer.step()  # updates weights and biases from back prop calculation
+
+        if envManager.done:
+            episode_durations.append(timestep)
+            plot(episode_durations, 100)
+            break
+
+    if episode % target_update == 0:
+        # update the target net weights with the policy net's weights
+        target_net.load_state_dict(policy_net.state_dict())
+
+envManager.close()
+
+
+def show_unprocessed_screen():
+    screen = envManager.render("rgb_array")
+    plt.figure()
+    plt.imshow(screen)
+    plt.title("Non-processed screen example")
+    plt.show()
+
+
+def show_processed_screen():
+    screen = envManager.get_processed_screen()
+    plt.figure()
+    plt.imshow(screen.squeeze(0).permute(1, 2, 0), interpolation="none")
+    plt.title("Processed screen example")
+    plt.show()
