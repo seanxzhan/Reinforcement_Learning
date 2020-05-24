@@ -320,6 +320,7 @@ def play_game():
                 experiences = memory.sample(batch_size)
                 states, actions, rewards, next_states = extract_tensors(experiences)
 
+                # state = state.squeeze().unsqueeze(dim=0)
                 current_q_values = QValues.get_current(policy_net, states, actions)
                 next_q_values = QValues.get_next(target_net, next_states)
                 target_q_values = (next_q_values * gamma) + rewards
