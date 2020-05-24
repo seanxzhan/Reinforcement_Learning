@@ -121,7 +121,7 @@ class CartpoleEnvManager():
     def __init__(self, device):
         self.device = device
         # unwrap allows behind-scene access
-        self.env = gym.make("CartPole-v0").unwrapped
+        self.env = gym.make("Pong-ram-v0").unwrapped
         self.env.reset()
         self.current_screen = None  # at the start of an episode, no screen yet
         self.done = False
