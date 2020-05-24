@@ -35,7 +35,7 @@ class DQN(nn.Module):
         self.fc1 = nn.Linear(in_features=img_h * img_w * 3, out_features=24)
         # second linear layer has 32 outputs
         self.fc2 = nn.Linear(in_features=24, out_features=32)
-        # number of outputs is 2 because the cart will either move left or right
+        # number of outputs is 2 because the platform moves up or down
         self.out = nn.Linear(in_features=32, out_features=2)
 
     # required to implement a forward method of the nn.Module class
@@ -117,7 +117,7 @@ class Agent():
                 return policy_net(state).argmax(dim=1).to(self.device)
 
 
-class CartpoleEnvManager():
+class PongEnvManager():
     def __init__(self, device):
         self.device = device
         # unwrap allows behind-scene access
@@ -149,17 +149,9 @@ class CartpoleEnvManager():
     def just_starting(self):
         return self.current_screen is None
 
-    # def crop_screen(self, screen):
-    #     h = screen.shape[1]
-    #     top = int(h * 0.4)
-    #     bottom = int(h * 0.8)
-    #     screen = screen[:, top:bottom, :]
-    #     return screen
-
     def get_processed_screen(self):
         # transpose the matrix into arrays by height by width
         screen = self.render("rgb_array").transpose((2, 0, 1))
-        # screen = self.crop_screen(screen)
         return self.transform_screen_data(screen)
 
     def transform_screen_data(self, screen):
@@ -167,8 +159,8 @@ class CartpoleEnvManager():
         screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
         # pass the array as a tensor
         screen = torch.from_numpy(screen)
-        resize = T.Compose([T.ToPILImage(), T.Resize((40, 90)), T.ToTensor()])
-        return resize(screen).unsqueeze(0).to(self.device)
+        tensor_screen = T.Compose([T.ToPILImage(), T.ToTensor()])
+        return tensor_screen(screen).unsqueeze(0).to(self.device)
 
     # return the current state of env as a processed image
     def get_state(self):
@@ -241,7 +233,7 @@ learning_rate = 0.001
 num_episodes = 1000
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-envManager = CartpoleEnvManager(device)
+envManager = PongEnvManager(device)
 strategy = EpsilonGreedyStrategy(eps_start, eps_end, eps_decay)
 agent = Agent(strategy, envManager.num_actions_available(), device)
 memory = ReplayMemory(memory_size)
@@ -365,4 +357,4 @@ def show_processed_screen():
     plt.show()
 
 
-show_unprocessed_screen()
+play_game()
