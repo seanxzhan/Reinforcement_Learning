@@ -19,6 +19,7 @@ import torchvision.transforms as T
 is_ipython = "inline" in matplotlib.get_backend()
 if is_ipython: from IPython import display
 
+
 # deep q-network
 # we need a policy network and a target network
 # network consists of a 2 fully connected hidden layers and an output layer
@@ -264,6 +265,8 @@ class QValues():
     @staticmethod
     def get_current(policy_net, states, actions):
         # returns predicted q values from the policy net for the state action pair
+        print(states.dim())
+        print(actions.unsqueeze(-1))
         return policy_net(states).gather(dim=1, index=actions.unsqueeze(-1))
 
     # do we have any final states in our next_state tensor?
@@ -307,42 +310,45 @@ def extract_tensors(experiences):
 # values in the list are the number of rewards that the agent receives
 # 1 reward per move to keep the game going => 1 reward = 1 time step of duration
 episode_durations = []  # list of values that would be used later
-for episode in range(num_episodes):
-    envManager.reset()
-    state = envManager.get_state()
 
-    for timestep in count():
-        # agent uses the policy net to explore or exploit
-        action = agent.select_action(state, policy_net)
-        reward = envManager.take_action(action)
-        next_state = envManager.get_state()
-        memory.push(Experience(state, action, next_state, reward))
-        state = next_state
 
-        # training
-        if memory.can_return_sample(batch_size):
-            experiences = memory.sample(batch_size)
-            states, actions, rewards, next_states = extract_tensors(experiences)
+def play_game():
+    for episode in range(20):
+        envManager.reset()
+        state = envManager.get_state()
 
-            current_q_values = QValues.get_current(policy_net, states, actions)
-            next_q_values = QValues.get_next(target_net, next_states)
-            target_q_values = (next_q_values * gamma) + rewards
+        for timestep in count():
+            # agent uses the policy net to explore or exploit
+            action = agent.select_action(state, policy_net)
+            reward = envManager.take_action(action)
+            next_state = envManager.get_state()
+            memory.push(Experience(state, action, next_state, reward))
+            state = next_state
 
-            loss = F.mse_loss(current_q_values, target_q_values.unsqueeze(1))
-            optimizer.zero_grad()  # set the gradients of the weights and biases to 0
-            loss.backward()  # back propogation after zero_grad to avoid accumulation of grad
-            optimizer.step()  # updates weights and biases from back prop calculation
+            # training
+            if memory.can_return_sample(batch_size):
+                experiences = memory.sample(batch_size)
+                states, actions, rewards, next_states = extract_tensors(experiences)
 
-        if envManager.done:
-            episode_durations.append(timestep)
-            plot(episode_durations, 100)
-            break
+                current_q_values = QValues.get_current(policy_net, states, actions)
+                next_q_values = QValues.get_next(target_net, next_states)
+                target_q_values = (next_q_values * gamma) + rewards
 
-    if episode % target_update == 0:
-        # update the target net weights with the policy net's weights
-        target_net.load_state_dict(policy_net.state_dict())
+                loss = F.mse_loss(current_q_values, target_q_values.unsqueeze(1))
+                optimizer.zero_grad()  # set the gradients of the weights and biases to 0
+                loss.backward()  # back propogation after zero_grad to avoid accumulation of grad
+                optimizer.step()  # updates weights and biases from back prop calculation
 
-envManager.close()
+            if envManager.done:
+                episode_durations.append(timestep)
+                plot(episode_durations, 100)
+                break
+
+        if episode % target_update == 0:
+            # update the target net weights with the policy net's weights
+            target_net.load_state_dict(policy_net.state_dict())
+
+    envManager.close()
 
 
 def show_unprocessed_screen():
@@ -359,3 +365,6 @@ def show_processed_screen():
     plt.imshow(screen.squeeze(0).permute(1, 2, 0), interpolation="none")
     plt.title("Processed screen example")
     plt.show()
+
+
+play_game()

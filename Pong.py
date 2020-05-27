@@ -257,6 +257,8 @@ class QValues():
     @staticmethod
     def get_current(policy_net, states, actions):
         # returns predicted q values from the policy net for the state action pair
+        print(states.dim())
+        print(actions.dim())
         return policy_net(states).gather(dim=1, index=actions.unsqueeze(-1))
 
     # do we have any final states in our next_state tensor?
@@ -321,7 +323,7 @@ def play_game():
                 states, actions, rewards, next_states = extract_tensors(experiences)
 
                 # state = state.squeeze().unsqueeze(dim=0)
-                current_q_values = QValues.get_current(policy_net, states, actions)
+                current_q_values = QValues.get_current(policy_net,states, actions)
                 next_q_values = QValues.get_next(target_net, next_states)
                 target_q_values = (next_q_values * gamma) + rewards
 
