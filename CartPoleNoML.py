@@ -2,8 +2,8 @@
 # http://gym.openai.com/docs/#observations
 
 import gym
-env = gym.make("CartPole-v0")
-# env = gym.make("Pong-ram-v0")
+# env = gym.make("CartPole-v0")
+env = gym.make("Pong-ram-v0")
 env.reset()
 
 

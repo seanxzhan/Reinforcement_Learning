@@ -121,30 +121,30 @@ class PongEnvManager():
     def __init__(self, device):
         self.device = device
         # unwrap allows behind-scene access
-        self.env = gym.make("Pong-ram-v0").unwrapped
-        self.env.reset()
+        # self.env = gym.make("Pong-ram-v0").unwrapped
+        # self.env.reset()
         self.current_screen = None  # at the start of an episode, no screen yet
         self.done = False
 
-    def reset(self):
-        self.env.reset()
-        self.current_screen = None
+    # def reset(self):
+    #     self.env.reset()
+    #     self.current_screen = None
 
-    def close(self):
-        self.env.close()
+    # def close(self):
+    #     self.env.close()
 
-    def render(self, mode="human"):
-        return self.env.render(mode)
+    # def render(self, mode="human"):
+    #     return self.env.render(mode)
 
-    def num_actions_available(self):
-        return self.env.action_space.n
+    # def num_actions_available(self):
+    #     return self.env.action_space.n
 
-    def take_action(self, action):
-        # action.item(): action that would be passed should be a tensor
-        # item returns the value of the tensor
-        _, reward, self.done, _ = self.env.step(action.item())
-        # returns reward wrapped in tensor
-        return torch.tensor([reward], device=self.device)
+    # def take_action(self, action):
+    #     # action.item(): action that would be passed should be a tensor
+    #     # item returns the value of the tensor
+    #     _, reward, self.done, _ = self.env.step(action.item())
+    #     # returns reward wrapped in tensor
+    #     return torch.tensor([reward], device=self.device)
 
     def just_starting(self):
         return self.current_screen is None
@@ -234,8 +234,9 @@ num_episodes = 1000
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 envManager = PongEnvManager(device)
+env = gym.make("Pong-ram-v0")
 strategy = EpsilonGreedyStrategy(eps_start, eps_end, eps_decay)
-agent = Agent(strategy, envManager.num_actions_available(), device)
+agent = Agent(strategy, env.action_space.n, device)
 memory = ReplayMemory(memory_size)
 
 # input dimension
@@ -255,11 +256,11 @@ class QValues():
 
     # static method allows us to use the tagged functions without creating a class first
     @staticmethod
-    def get_current(policy_net, states, actions):
+    def get_current(policy_net, observations, actions):
         # returns predicted q values from the policy net for the state action pair
-        print(states.dim())
+        # print(observations.dim())
         print(actions.dim())
-        return policy_net(states).gather(dim=1, index=actions.unsqueeze(-1))
+        return policy_net(observations).gather(dim=1, index=observations.unsqueeze(-1))
 
     # do we have any final states in our next_state tensor?
     # if we do, we don't pass them to the target net because their associated values are 0
@@ -304,26 +305,54 @@ def extract_tensors(experiences):
 episode_durations = []  # list of values that would be used later
 
 
+
 def play_game():
+    current_screen = None
     for episode in range(num_episodes):
-        envManager.reset()
-        state = envManager.get_state()
+        observation = env.reset()
+        # state = envManager.get_state()
 
         for timestep in count():
+            env.render()
             # agent uses the policy net to explore or exploit
-            action = agent.select_action(state, policy_net)
-            reward = envManager.take_action(action)
-            next_state = envManager.get_state()
-            memory.push(Experience(state, action, next_state, reward))
-            state = next_state
+            action = agent.select_action(observation, policy_net)
+            # storing current observation (state) and action into step
+            # reward in wrapped in step
+            observation, reward, done, info = env.step(action.item())
+            # getting reward
+            reward = torch.tensor([reward], device=device)
+
+            screen = env.render("rgb_array").transpose((2, 0, 1))
+            screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
+            # pass the array as a tensor
+            screen = torch.from_numpy(screen)
+            tensor_screen = T.Compose([T.ToPILImage(), T.ToTensor()])
+            processed_screen = tensor_screen(screen).unsqueeze(0).to(device)
+
+            if done:
+                current_screen = processed_screen
+                next_state = torch.zeros_like(processed_screen)
+            else:
+                s1 = current_screen
+                s2 = processed_screen
+                self.current_screen = s2
+                next_state = s2 - s1  # to represent a single state
+
+            # where I left off:
+            # i need to represent next_state with processed_screen so that next_state
+            # can be pushed to memory
+            # refer back to deeplizard website
+            # next_state = envManager.get_state()
+            memory.push(Experience(observation, action, next_state, reward))
+            # state = next_state
 
             # training
             if memory.can_return_sample(batch_size):
                 experiences = memory.sample(batch_size)
-                states, actions, rewards, next_states = extract_tensors(experiences)
+                observations, actions, rewards, next_states = extract_tensors(experiences)
 
                 # state = state.squeeze().unsqueeze(dim=0)
-                current_q_values = QValues.get_current(policy_net,states, actions)
+                current_q_values = QValues.get_current(policy_net, observations, actions)
                 next_q_values = QValues.get_next(target_net, next_states)
                 target_q_values = (next_q_values * gamma) + rewards
 
@@ -332,7 +361,7 @@ def play_game():
                 loss.backward()  # back propogation after zero_grad to avoid accumulation of grad
                 optimizer.step()  # updates weights and biases from back prop calculation
 
-            if envManager.done:
+            if done:    # from env.step
                 episode_durations.append(timestep)
                 plot(episode_durations, 100)
                 break
@@ -341,7 +370,7 @@ def play_game():
             # update the target net weights with the policy net's weights
             target_net.load_state_dict(policy_net.state_dict())
 
-    envManager.close()
+    env.close()
 
 
 def show_unprocessed_screen():
