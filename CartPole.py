@@ -265,8 +265,8 @@ class QValues():
     @staticmethod
     def get_current(policy_net, states, actions):
         # returns predicted q values from the policy net for the state action pair
-        print(states.dim())
-        print(actions.unsqueeze(-1))
+        print(states.size())
+        print(actions.size())
         return policy_net(states).gather(dim=1, index=actions.unsqueeze(-1))
 
     # do we have any final states in our next_state tensor?
@@ -313,7 +313,7 @@ episode_durations = []  # list of values that would be used later
 
 
 def play_game():
-    for episode in range(20):
+    for episode in range(num_episodes):
         envManager.reset()
         state = envManager.get_state()
 

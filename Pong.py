@@ -6,9 +6,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 from collections import namedtuple
 from itertools import count
-
-import self as self
-from PIL import Image
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -35,18 +32,17 @@ class DQN(nn.Module):
         self.fc1 = nn.Linear(in_features=img_h * img_w * 3, out_features=24)
         # second linear layer has 32 outputs
         self.fc2 = nn.Linear(in_features=24, out_features=32)
-        # number of outputs is 2 because the platform moves up or down
-        self.out = nn.Linear(in_features=32, out_features=2)
+        # number of outputs is 6 because action space is 0,1,2,3,4,5
+        self.out = nn.Linear(in_features=32, out_features=6)
 
     # required to implement a forward method of the nn.Module class
     # implement a forward pass to the network
     def forward(self, t):
-        t = t.flatten(start_dim=1)
+        t = torch.flatten(t, start_dim=1)
         t = F.relu(self.fc1(t))
         t = F.relu(self.fc2(t))
         t = self.out(t)
         return t
-
 
 # agent's experience
 Experience = namedtuple("Experience",
@@ -117,72 +113,6 @@ class Agent():
                 return policy_net(state).argmax(dim=1).to(self.device)
 
 
-class PongEnvManager():
-    def __init__(self, device):
-        self.device = device
-        # unwrap allows behind-scene access
-        # self.env = gym.make("Pong-ram-v0").unwrapped
-        # self.env.reset()
-        self.current_screen = None  # at the start of an episode, no screen yet
-        self.done = False
-
-    # def reset(self):
-    #     self.env.reset()
-    #     self.current_screen = None
-
-    # def close(self):
-    #     self.env.close()
-
-    # def render(self, mode="human"):
-    #     return self.env.render(mode)
-
-    # def num_actions_available(self):
-    #     return self.env.action_space.n
-
-    # def take_action(self, action):
-    #     # action.item(): action that would be passed should be a tensor
-    #     # item returns the value of the tensor
-    #     _, reward, self.done, _ = self.env.step(action.item())
-    #     # returns reward wrapped in tensor
-    #     return torch.tensor([reward], device=self.device)
-
-    def just_starting(self):
-        return self.current_screen is None
-
-    def get_processed_screen(self):
-        # transpose the matrix into arrays by height by width
-        screen = self.render("rgb_array").transpose((2, 0, 1))
-        return self.transform_screen_data(screen)
-
-    def transform_screen_data(self, screen):
-        # store screen into an array
-        screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
-        # pass the array as a tensor
-        screen = torch.from_numpy(screen)
-        tensor_screen = T.Compose([T.ToPILImage(), T.ToTensor()])
-        return tensor_screen(screen).unsqueeze(0).to(self.device)
-
-    # return the current state of env as a processed image
-    def get_state(self):
-        if self.just_starting() or self.done:
-            self.current_screen = self.get_processed_screen()
-            black_screen = torch.zeros_like(self.current_screen)
-            return black_screen
-        else:
-            s1 = self.current_screen
-            s2 = self.get_processed_screen()
-            self.current_screen = s2
-            return s2 - s1  # to represent a single state
-
-    def get_screen_height(self):
-        screen = self.get_processed_screen()
-        return screen.shape[2]
-
-    def get_screen_width(self):
-        screen = self.get_processed_screen()
-        return screen.shape[3]
-
-
 ######################## PLOTTING ########################
 
 
@@ -233,15 +163,20 @@ learning_rate = 0.001
 num_episodes = 1000
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-envManager = PongEnvManager(device)
+# envManager = PongEnvManager(device)
 env = gym.make("Pong-ram-v0")
 strategy = EpsilonGreedyStrategy(eps_start, eps_end, eps_decay)
 agent = Agent(strategy, env.action_space.n, device)
 memory = ReplayMemory(memory_size)
 
+init_screen = env.render(mode='rgb_array').transpose((2, 0, 1))
+_, screen_height, screen_width = init_screen.shape
+
 # input dimension
-policy_net = DQN(envManager.get_screen_height(), envManager.get_screen_width()).to(device)
-target_net = DQN(envManager.get_screen_height(), envManager.get_screen_width()).to(device)
+# policy_net = DQN(envManager.get_screen_height(), envManager.get_screen_width()).to(device)
+# target_net = DQN(envManager.get_screen_height(), envManager.get_screen_width()).to(device)
+policy_net = DQN(screen_height, screen_width).to(device)
+target_net = DQN(screen_height, screen_width).to(device)
 # clone the policy net to target net
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()  # indicating that the target networks is not in training mode => eval mode
@@ -256,11 +191,11 @@ class QValues():
 
     # static method allows us to use the tagged functions without creating a class first
     @staticmethod
-    def get_current(policy_net, observations, actions):
+    def get_current(policy_net, states, actions):
         # returns predicted q values from the policy net for the state action pair
-        # print(observations.dim())
-        print(actions.dim())
-        return policy_net(observations).gather(dim=1, index=observations.unsqueeze(-1))
+        print(states.size())
+        print(actions.size())
+        return policy_net(states).gather(1, actions.unsqueeze(-1))
 
     # do we have any final states in our next_state tensor?
     # if we do, we don't pass them to the target net because their associated values are 0
@@ -297,7 +232,16 @@ def extract_tensors(experiences):
     t2 = torch.cat(batch.action)
     t3 = torch.cat(batch.reward)
     t4 = torch.cat(batch.next_state)
-    return (t1, t2, t3, t4)
+    return t1, t2, t3, t4
+
+
+def get_screen():
+    screen = env.render("rgb_array").transpose((2, 0, 1))
+    screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
+    # pass the array as a tensor
+    screen = torch.from_numpy(screen)
+    tensor_screen = T.Compose([T.ToPILImage(), T.ToTensor()])
+    return tensor_screen(screen).unsqueeze(0).to(device)
 
 
 # values in the list are the number of rewards that the agent receives
@@ -305,54 +249,49 @@ def extract_tensors(experiences):
 episode_durations = []  # list of values that would be used later
 
 
-
 def play_game():
-    current_screen = None
+    current_screen = get_screen()
     for episode in range(num_episodes):
         observation = env.reset()
         # state = envManager.get_state()
+        last_screen = get_screen()
+        # current_screen = get_screen()
+        state = current_screen - last_screen
 
         for timestep in count():
             env.render()
             # agent uses the policy net to explore or exploit
-            action = agent.select_action(observation, policy_net)
+            action = agent.select_action(state, policy_net)
             # storing current observation (state) and action into step
             # reward in wrapped in step
             observation, reward, done, info = env.step(action.item())
             # getting reward
             reward = torch.tensor([reward], device=device)
 
-            screen = env.render("rgb_array").transpose((2, 0, 1))
-            screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
-            # pass the array as a tensor
-            screen = torch.from_numpy(screen)
-            tensor_screen = T.Compose([T.ToPILImage(), T.ToTensor()])
-            processed_screen = tensor_screen(screen).unsqueeze(0).to(device)
-
-            if done:
-                current_screen = processed_screen
-                next_state = torch.zeros_like(processed_screen)
+            last_screen = current_screen
+            current_screen = get_screen()
+            if not done:
+                next_state = current_screen - last_screen
             else:
-                s1 = current_screen
-                s2 = processed_screen
-                self.current_screen = s2
-                next_state = s2 - s1  # to represent a single state
+                next_state = None
+
+            state = next_state
 
             # where I left off:
             # i need to represent next_state with processed_screen so that next_state
             # can be pushed to memory
             # refer back to deeplizard website
             # next_state = envManager.get_state()
-            memory.push(Experience(observation, action, next_state, reward))
+            memory.push(Experience(state, action, next_state, reward))
             # state = next_state
 
             # training
             if memory.can_return_sample(batch_size):
                 experiences = memory.sample(batch_size)
-                observations, actions, rewards, next_states = extract_tensors(experiences)
+                states, actions, rewards, next_states = extract_tensors(experiences)
 
                 # state = state.squeeze().unsqueeze(dim=0)
-                current_q_values = QValues.get_current(policy_net, observations, actions)
+                current_q_values = QValues.get_current(policy_net, states, actions)
                 next_q_values = QValues.get_next(target_net, next_states)
                 target_q_values = (next_q_values * gamma) + rewards
 
@@ -371,22 +310,6 @@ def play_game():
             target_net.load_state_dict(policy_net.state_dict())
 
     env.close()
-
-
-def show_unprocessed_screen():
-    screen = envManager.render("rgb_array")
-    plt.figure()
-    plt.imshow(screen)
-    plt.title("Non-processed screen example")
-    plt.show()
-
-
-def show_processed_screen():
-    screen = envManager.get_processed_screen()
-    plt.figure()
-    plt.imshow(screen.squeeze(0).permute(1, 2, 0), interpolation="none")
-    plt.title("Processed screen example")
-    plt.show()
 
 
 play_game()
