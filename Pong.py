@@ -33,6 +33,7 @@ class DQN(nn.Module):
         # second linear layer has 32 outputs
         self.fc2 = nn.Linear(in_features=24, out_features=32)
         # number of outputs is 6 because action space is 0,1,2,3,4,5
+        # change the number of outputs when game is changed
         self.out = nn.Linear(in_features=32, out_features=6)
 
     # required to implement a forward method of the nn.Module class
@@ -152,7 +153,7 @@ def plot(values, moving_avg_period):
 ######################## Training ########################
 
 
-batch_size = 256
+batch_size = 64
 gamma = 0.999
 eps_start = 1
 eps_end = 0.01
@@ -165,6 +166,7 @@ num_episodes = 1000
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # envManager = PongEnvManager(device)
 env = gym.make("Pong-ram-v0")
+# env = gym.make("Breakout-ram-v0")
 strategy = EpsilonGreedyStrategy(eps_start, eps_end, eps_decay)
 agent = Agent(strategy, env.action_space.n, device)
 memory = ReplayMemory(memory_size)
@@ -193,8 +195,6 @@ class QValues():
     @staticmethod
     def get_current(policy_net, states, actions):
         # returns predicted q values from the policy net for the state action pair
-        print(states.size())
-        print(actions.size())
         return policy_net(states).gather(1, actions.unsqueeze(-1))
 
     # do we have any final states in our next_state tensor?
@@ -232,7 +232,7 @@ def extract_tensors(experiences):
     t2 = torch.cat(batch.action)
     t3 = torch.cat(batch.reward)
     t4 = torch.cat(batch.next_state)
-    return t1, t2, t3, t4
+    return (t1, t2, t3, t4)
 
 
 def get_screen():
