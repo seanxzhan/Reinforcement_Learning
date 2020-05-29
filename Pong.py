@@ -45,6 +45,7 @@ class DQN(nn.Module):
         t = self.out(t)
         return t
 
+
 # agent's experience
 Experience = namedtuple("Experience",
                         ("state", "action", "next_state", "reward"))
@@ -165,7 +166,7 @@ num_episodes = 1000
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # envManager = PongEnvManager(device)
-env = gym.make("Pong-ram-v0")
+env = gym.make("Pong-v0")
 # env = gym.make("Breakout-ram-v0")
 strategy = EpsilonGreedyStrategy(eps_start, eps_end, eps_decay)
 agent = Agent(strategy, env.action_space.n, device)
@@ -252,7 +253,7 @@ episode_durations = []  # list of values that would be used later
 def play_game():
     current_screen = get_screen()
     for episode in range(num_episodes):
-        observation = env.reset()
+        env.reset()
         # state = envManager.get_state()
         last_screen = get_screen()
         # current_screen = get_screen()
@@ -273,9 +274,8 @@ def play_game():
             if not done:
                 next_state = current_screen - last_screen
             else:
-                next_state = None
-
-            state = next_state
+                # returning a black screen to make sure that next_state is not NoneType
+                next_state = torch.zeros_like(current_screen)
 
             # where I left off:
             # i need to represent next_state with processed_screen so that next_state
@@ -284,6 +284,8 @@ def play_game():
             # next_state = envManager.get_state()
             memory.push(Experience(state, action, next_state, reward))
             # state = next_state
+
+            state = next_state
 
             # training
             if memory.can_return_sample(batch_size):
@@ -300,7 +302,7 @@ def play_game():
                 loss.backward()  # back propogation after zero_grad to avoid accumulation of grad
                 optimizer.step()  # updates weights and biases from back prop calculation
 
-            if done:    # from env.step
+            if done:  # from env.step
                 episode_durations.append(timestep)
                 plot(episode_durations, 100)
                 break
