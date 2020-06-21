@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from collections import namedtuple
 from itertools import count
 
-import self as self
+# import self as self
 from PIL import Image
 import torch
 import torch.nn as nn

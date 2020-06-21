@@ -168,7 +168,7 @@ num_episodes = 1000
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # envManager = PongEnvManager(device)
-env = gym.make("Pong-v0")
+env = gym.make("Pong-ram-v0")
 # env = gym.make("Breakout-ram-v0")
 strategy = EpsilonGreedyStrategy(eps_start, eps_end, eps_decay)
 agent = Agent(strategy, env.action_space.n, device)
@@ -219,7 +219,7 @@ class QValues():
         final_state_locations = next_states.flatten(start_dim=1).\
             max(dim=1)[0].eq(0).type(torch.bool)
         # we don't want to pass these final state locations to target net
-        non_final_state_locations = not final_state_locations
+        non_final_state_locations = ( final_state_locations == False )
         non_final_states = next_states[non_final_state_locations]
         # how many next states are in the next_states tensor?
         batch_size = next_states.shape[0]

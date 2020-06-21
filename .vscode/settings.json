@@ -1,8 +1,8 @@
 {
-    "python.linting.pylintEnabled": false,
+    "python.linting.pylintEnabled": true,
     "python.linting.enabled": true,
     "python.pythonPath": "C:\\Users\\seanz\\anaconda3\\python.exe",
-    "python.linting.flake8Enabled": true,
+    "python.linting.flake8Enabled": false,
     "editor.rulers": [
         80, 120
     ]
