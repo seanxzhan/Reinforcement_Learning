@@ -14,7 +14,8 @@ import torchvision.transforms as T
 
 # for display:
 is_ipython = "inline" in matplotlib.get_backend()
-if is_ipython: from IPython import display
+if is_ipython:
+    from IPython import display
 
 
 # deep q-network
@@ -115,7 +116,7 @@ class Agent():
                 return policy_net(state).argmax(dim=1).to(self.device)
 
 
-######################## PLOTTING ########################
+# Plotting
 
 
 # period: represents the period over which we want to calculate an avg
@@ -125,8 +126,8 @@ def get_moving_average(period, values):
     values = torch.tensor(values, dtype=torch.float)
     # length of the dataset must be longer than that of the required period
     if len(values) >= period:
-        moving_avg = values.unfold(dimension=0, size=period, step=1).mean(dim=1) \
-            .flatten(start_dim=0)
+        moving_avg = values.unfold(dimension=0, size=period, step=1).\
+            mean(dim=1).flatten(start_dim=0)
         return moving_avg.numpy()
     else:
         moving_avg = torch.zeros(len(values))
@@ -146,12 +147,13 @@ def plot(values, moving_avg_period):
     moving_avg = get_moving_average(moving_avg_period, values)
     plt.plot(moving_avg)
     plt.pause(0.001)
-    print("Episode", len(values), "\n", moving_avg_period, "episode moving avg:",
-          moving_avg[-1])
-    if is_ipython: display.clear_output(wait=True)
+    print("Episode", len(values), "\n", moving_avg_period,
+          "episode moving avg:", moving_avg[-1])
+    if is_ipython:
+        display.clear_output(wait=True)
 
 
-######################## Training ########################
+# Training
 
 
 batch_size = 64
@@ -176,50 +178,60 @@ init_screen = env.render(mode='rgb_array').transpose((2, 0, 1))
 _, screen_height, screen_width = init_screen.shape
 
 # input dimension
-# policy_net = DQN(envManager.get_screen_height(), envManager.get_screen_width()).to(device)
-# target_net = DQN(envManager.get_screen_height(), envManager.get_screen_width()).to(device)
+# policy_net = DQN(envManager.get_screen_height(),
+#                  envManager.get_screen_width()).to(device)
+# target_net = DQN(envManager.get_screen_height(),
+#                  envManager.get_screen_width()).to(device)
 policy_net = DQN(screen_height, screen_width).to(device)
 target_net = DQN(screen_height, screen_width).to(device)
 # clone the policy net to target net
 target_net.load_state_dict(policy_net.state_dict())
-target_net.eval()  # indicating that the target networks is not in training mode => eval mode
+# indicating that the target networks is not in training mode => eval mode
+target_net.eval()
 optimizer = optim.Adam(params=policy_net.parameters(), lr=learning_rate)
 
 
 # this class deals with the second pass to get the predicted q value
 class QValues():
-    # since we won't create an instance of this class, we won't be using the device
-    # that we have already created outside of this class
+    # since we won't create an instance of this class, we won't be using
+    # the device that we have already created outside of this class
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # static method allows us to use the tagged functions without creating a class first
+    # static method allows us to use the tagged functions without
+    # creating a class first
     @staticmethod
     def get_current(policy_net, states, actions):
-        # returns predicted q values from the policy net for the state action pair
+        # returns predicted q values from the policy net
+        # for the state action pair
         return policy_net(states).gather(1, actions.unsqueeze(-1))
 
     # do we have any final states in our next_state tensor?
-    # if we do, we don't pass them to the target net because their associated values are 0
+    # if we do, we don't pass them to the target net because
+    # their associated values are 0
     @staticmethod
     def get_next(target_net, next_states):
-        # for each next state, we want to obtain the max q value predicted by the target net
+        # for each next state, we want to obtain the max q value predicted
+        # by the target net
         # final states are represented by all pixels being 0
-        # we are filtering through all the locations to get where all pixels are 0
-        final_state_locations = next_states.flatten(start_dim=1).max(dim=1)[0]. \
-            eq(0).type(torch.bool)  # if max is 0, we know it's final state
+        # we are filtering through all the locations to get
+        # where all pixels are 0
+        # if max is 0, we know it's final state
+        final_state_locations = next_states.flatten(start_dim=1).\
+            max(dim=1)[0].eq(0).type(torch.bool)
         # we don't want to pass these final state locations to target net
-        non_final_state_locations = (final_state_locations == False)
+        non_final_state_locations = not final_state_locations
         non_final_states = next_states[non_final_state_locations]
         # how many next states are in the next_states tensor?
         batch_size = next_states.shape[0]
         values = torch.zeros(batch_size).to(QValues.device)
         # set values at non_final_state_locations to be the same as
         # maximum predicted q values from the target net across each action
-        values[non_final_state_locations] = target_net(non_final_states).max(dim=1)[0].detach()
+        values[non_final_state_locations] = target_net(non_final_states).\
+            max(dim=1)[0].detach()
         # values will be such that:
         # 0's as the q-values that are the final states, and
-        # for each non-final state, the tensor values contains the max predicted
-        # q-values across all actions for each non-final state
+        # for each non-final state, the tensor values contains the
+        # max predicted q-values across all actions for each non-final state
         return values
 
 
@@ -246,7 +258,8 @@ def get_screen():
 
 
 # values in the list are the number of rewards that the agent receives
-# 1 reward per move to keep the game going => 1 reward = 1 time step of duration
+# 1 reward per move to keep the game going => 1 reward = 1 time step of
+# duration
 episode_durations = []  # list of values that would be used later
 
 
@@ -274,12 +287,13 @@ def play_game():
             if not done:
                 next_state = current_screen - last_screen
             else:
-                # returning a black screen to make sure that next_state is not NoneType
+                # returning a black screen to make sure that next_state
+                # is not NoneType
                 next_state = torch.zeros_like(current_screen)
 
             # where I left off:
-            # i need to represent next_state with processed_screen so that next_state
-            # can be pushed to memory
+            # i need to represent next_state with processed_screen so that
+            # next_state can be pushed to memory
             # refer back to deeplizard website
             # next_state = envManager.get_state()
             memory.push(Experience(state, action, next_state, reward))
@@ -290,17 +304,23 @@ def play_game():
             # training
             if memory.can_return_sample(batch_size):
                 experiences = memory.sample(batch_size)
-                states, actions, rewards, next_states = extract_tensors(experiences)
+                states, actions, rewards, next_states = extract_tensors(
+                    experiences)
 
                 # state = state.squeeze().unsqueeze(dim=0)
-                current_q_values = QValues.get_current(policy_net, states, actions)
+                current_q_values = QValues.\
+                    get_current(policy_net, states, actions)
                 next_q_values = QValues.get_next(target_net, next_states)
                 target_q_values = (next_q_values * gamma) + rewards
 
-                loss = F.mse_loss(current_q_values, target_q_values.unsqueeze(1))
-                optimizer.zero_grad()  # set the gradients of the weights and biases to 0
-                loss.backward()  # back propogation after zero_grad to avoid accumulation of grad
-                optimizer.step()  # updates weights and biases from back prop calculation
+                loss = F.mse_loss(current_q_values,
+                                  target_q_values.unsqueeze(1))
+                # set the gradients of the weights and biases to 0
+                optimizer.zero_grad()
+                # back propogation after zero_grad to avoid accum of grad
+                loss.backward()
+                # updates weights and biases from back prop calculation
+                optimizer.step()
 
             if done:  # from env.step
                 episode_durations.append(timestep)
