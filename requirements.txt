@@ -47,7 +47,7 @@ parso==0.7.0
 pexpect==4.8.0
 pickleshare==0.7.5
 Pillow==7.1.2
-pipenv==2018.11.26
+pipenv==2022.1.8
 pluggy==0.13.1
 prettytable==0.7.2
 progressbar2==3.47.0
